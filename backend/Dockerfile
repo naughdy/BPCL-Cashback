@@ -36,4 +36,4 @@ EXPOSE 4000
 
 # Applies any pending migrations, then starts the API. Safe to run on every
 # deploy — Prisma no-ops if there's nothing new to apply.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/server.js"]
