@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bpcl_cashback
+    ports:
+      - '5432:5432'
+    volumes:
+      - bpcl_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/bpcl_cashback
+      JWT_SECRET: local-dev-secret-change-me
+      PORT: 4000
+      OTP_PROVIDER: MOCK
+      WHATSAPP_PROVIDER: MOCK
+      READER_PROVIDER: MOCK
+      CORS_ORIGIN: http://localhost:5173
+    ports:
+      - '4000:4000'
+
+volumes:
+  bpcl_postgres_data:

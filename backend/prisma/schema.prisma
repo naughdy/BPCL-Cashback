@@ -1,0 +1,197 @@
+// BPCL Fuel Cashback — Prisma schema
+// Single source of truth for the data model. See PART 10 of the spec.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+}
+
+enum TransactionStatus {
+  ACTIVE
+  EDITED
+  DELETED
+}
+
+enum RedemptionStatus {
+  PENDING
+  OTP_VERIFIED
+  WHATSAPP_PENDING
+  WHATSAPP_VERIFIED
+  READER_PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum OtpPurpose {
+  CUSTOMER_VERIFICATION
+  REDEMPTION
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  ADJUST
+  REDEEM
+  LOGIN
+  EXPORT
+}
+
+enum AuditEntityType {
+  CUSTOMER
+  FUEL_TRANSACTION
+  REDEMPTION
+  FUEL_RULE
+  ADMIN_USER
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(ADMIN)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("admin_users")
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  vehicleNumber String   @unique // normalized, e.g. MH15AB1234
+  mobileNumber  String // normalized 10-digit
+  fuelType      FuelType
+
+  // Derived/denormalized summary fields, always recomputed by the
+  // business-logic service — never written to directly from user input.
+  totalLitres           Decimal @default(0) @db.Decimal(10, 2)
+  cashbackGenerated      Decimal @default(0) @db.Decimal(10, 2)
+  cashbackRedeemed       Decimal @default(0) @db.Decimal(10, 2)
+  availableCashback      Decimal @default(0) @db.Decimal(10, 2)
+
+  isVerified Boolean @default(false) // true once OTP verified at creation
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedBy String?
+
+  transactions  FuelTransaction[]
+  redemptions   Redemption[]
+  otps          OtpVerification[]
+
+  @@index([mobileNumber])
+  @@index([deletedAt])
+  @@map("customers")
+}
+
+model FuelTransaction {
+  id                    String             @id @default(uuid())
+  customerId            String
+  customer              Customer           @relation(fields: [customerId], references: [id])
+  vehicleNumberSnapshot String
+  fuelTypeSnapshot      FuelType
+  litres                Decimal            @db.Decimal(10, 2)
+  cashbackGenerated     Decimal            @db.Decimal(10, 2)
+  transactionDate       DateTime           @default(now())
+  status                TransactionStatus  @default(ACTIVE)
+  idempotencyKey        String?            @unique
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([customerId])
+  @@map("fuel_transactions")
+}
+
+model Redemption {
+  id              String           @id @default(uuid())
+  customerId      String
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  amount          Decimal          @db.Decimal(10, 2)
+  status          RedemptionStatus @default(PENDING)
+  otpVerified     Boolean          @default(false)
+  whatsappStatus  String? // PENDING | SENT | VERIFIED | FAILED
+  readerStatus    String? // PENDING | SUCCESS | FAILED | TIMEOUT
+  referenceNumber String           @unique
+  idempotencyKey  String?          @unique
+  failureReason   String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([customerId])
+  @@map("redemptions")
+}
+
+model OtpVerification {
+  id           String     @id @default(uuid())
+  customerId   String?
+  customer     Customer?  @relation(fields: [customerId], references: [id])
+  mobileNumber String
+  purpose      OtpPurpose
+  otpHash      String
+  expiresAt    DateTime
+  attempts     Int        @default(0)
+  maxAttempts  Int        @default(5)
+  verifiedAt   DateTime?
+  consumedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([mobileNumber])
+  @@index([customerId])
+  @@map("otp_verifications")
+}
+
+model FuelRule {
+  id                      String   @id @default(uuid())
+  fuelType                FuelType @unique
+  redemptionThresholdLitres Decimal @db.Decimal(10, 2)
+  cashbackRatePerLitre    Decimal  @db.Decimal(10, 4)
+  updatedAt               DateTime @updatedAt
+  updatedBy               String?
+
+  @@map("fuel_rules")
+}
+
+model AuditLog {
+  id          String          @id @default(uuid())
+  adminUserId String?
+  adminUser   AdminUser?      @relation(fields: [adminUserId], references: [id])
+  entityType  AuditEntityType
+  entityId    String
+  action      AuditAction
+  oldValue    Json?
+  newValue    Json?
+  reason      String?
+  createdAt   DateTime        @default(now())
+
+  @@index([entityType, entityId])
+  @@index([adminUserId])
+  @@map("audit_logs")
+}
