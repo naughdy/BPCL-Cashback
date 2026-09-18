@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import Decimal from 'decimal.js';
+import type { Redemption } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { auditLog } from './audit.service';
@@ -156,7 +157,7 @@ export async function processRedemptionWhatsApp(redemptionId: string) {
 
 /** Step 5: run the reader transaction, advancing WHATSAPP_VERIFIED -> READER_PENDING -> SUCCESS/FAILED. */
 export async function processRedemptionReader(redemptionId: string): Promise<{
-  redemption: Awaited<ReturnType<typeof getRedemptionOrThrow>>;
+  redemption: Redemption;
   customer: CustomerWithSummary;
 }> {
   const redemption = await getRedemptionOrThrow(redemptionId);
